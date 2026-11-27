@@ -129,46 +129,58 @@ impl NameList {
     }
 }
 
-/// The run-time list of programs that only feed the ray-tracing
+/// The run-time lists of programs that only feed or walk the ray-tracing
 /// structures, left out while every ray misses (`VICTORY_RT_MISS=1`) and
-/// the structure builder is off (after edsuuu/VI-BR-PORT ab4571d and
-/// 1556de8, whose names are given here at run time):
-/// `VICTORY_RT_SKIN_NAMES` (the skinning passes made for the structures).
-/// Unset: nothing is left out.
+/// the structure builder is off (after edsuuu/VI-BR-PORT ab4571d, 1556de8
+/// and 24f8d2e, whose names are given here at run time):
+/// `VICTORY_RT_SKIN_NAMES` (the skinning passes made for the structures)
+/// and `VICTORY_RT_TRACE_NAMES` (tracing against them). Both unset: nothing
+/// is left out.
 struct RayLists {
     skin: NameList,
+    trace: NameList,
 }
 
+/// Reads `VICTORY_RT_SKIN_NAMES` and `VICTORY_RT_TRACE_NAMES` once
+/// ([`RayLists`], [`NameList`]); both come back empty unless
+/// `VICTORY_RT_MISS=1` and `VICTORY_BVH_BUILDER` is not `1`.
 fn ray_lists() -> &'static RayLists {
     static LISTS: OnceLock<RayLists> = OnceLock::new();
     LISTS.get_or_init(|| {
         let read = |name: &str| std::env::var(name).map(|text| NameList::parse(&text)).unwrap_or_default();
-        let skin = read("VICTORY_RT_SKIN_NAMES");
-        if skin.is_empty() {
-            return RayLists { skin };
+        let (skin, trace) = (read("VICTORY_RT_SKIN_NAMES"), read("VICTORY_RT_TRACE_NAMES"));
+        if skin.is_empty() && trace.is_empty() {
+            return RayLists { skin, trace };
         }
         let builder = std::env::var_os("VICTORY_BVH_BUILDER").is_some_and(|v| v == "1");
         let on = victory_shader::emit::rt_miss() && !builder;
         tracing::info!(
             on,
             skin_entries = skin.0.len(),
-            "ray-only programs named by VICTORY_RT_SKIN_NAMES: left out only with VICTORY_RT_MISS=1 and the builder off"
+            trace_entries = trace.0.len(),
+            "ray-only programs named by VICTORY_RT_SKIN_NAMES / VICTORY_RT_TRACE_NAMES: left out only with VICTORY_RT_MISS=1 and the builder off"
         );
-        if on { RayLists { skin } } else { RayLists { skin: NameList::default() } }
+        if on {
+            RayLists { skin, trace }
+        } else {
+            RayLists { skin: NameList::default(), trace: NameList::default() }
+        }
     })
 }
 
-/// Pipelines left out by [`ray_lists`] so far: skinning.
-static RAY_LEFT_OUT: [AtomicU64; 1] = [AtomicU64::new(0)];
+/// Pipelines left out by [`ray_lists`] so far: skinning, tracing.
+static RAY_LEFT_OUT: [AtomicU64; 2] = [AtomicU64::new(0), AtomicU64::new(0)];
 
 fn ray_list_left_out(shaders: &[Arc<Shader>]) -> Option<&'static str> {
     let lists = ray_lists();
-    if lists.skin.is_empty() {
+    if lists.skin.is_empty() && lists.trace.is_empty() {
         return None;
     }
     let listed = |list: &NameList| shaders.iter().any(|s| s.stage == "compute" && list.matches(&s.container));
     let (kind, why) = if listed(&lists.skin) {
         (0, "skins only for the ray-tracing structures, which every ray misses (VICTORY_RT_SKIN_NAMES), left out")
+    } else if listed(&lists.trace) {
+        (1, "traces the ray-tracing structures, which every ray misses (VICTORY_RT_TRACE_NAMES), left out")
     } else {
         return None;
     };
