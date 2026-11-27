@@ -193,19 +193,18 @@ miss: a box node answers four absent children, any other node the triangle
 miss. It is part of the translation: the shader cache's key holds it only
 when it is on, so translations cached without it keep their key. Compute
 programs can then be left out by names given at run time (meant for those
-that only skin for the structures or trace against them); the tree holds no
-names.
+that only skin for the structures or trace against them); the two lists have no names built in.
 
 | variable | does |
 |---|---|
 | `VICTORY_RT_MISS=1` | the node test hits nothing (off by default; only `1` turns it on) |
-| `VICTORY_RT_SKIN_NAMES=<list>` | compute programs whose container matches the list are left out: no host pipeline is made for them (meant for programs that skin only for the structures) |
+| `VICTORY_RT_SKIN_NAMES=<list>` | compute programs whose container matches the list are left out: no host pipeline is made for them and their dispatches are dropped (meant for programs that skin only for the structures) |
 | `VICTORY_RT_TRACE_NAMES=<list>` | the same (meant for programs that trace against the structures) |
 
 The two lists act only with `VICTORY_RT_MISS=1` and `VICTORY_BVH_BUILDER` not
 `1`; unset or empty, nothing is left out. A list is entries split by `,`; an
 entry is terms split by `+`, each a name the program's container must hold,
-or with a leading `-` one it must not hold (exact bytes, case-sensitive); an
+or with a leading `-` one it must not hold (exact bytes, case-sensitive; spaces around a term are trimmed); an
 entry with no name it must hold matches nothing. When either list holds an
 entry, the log has a line "ray-only programs named by
 VICTORY_RT_SKIN_NAMES / VICTORY_RT_TRACE_NAMES" with `on` and the entry
